@@ -1,232 +1,215 @@
-# Realtime Collaborative Editor
+# ScribbleSync — Realtime Collaborative Editor
 
-Architecture-only milestone for a production-quality realtime collaborative text editor. This repository is intentionally scoped to one shared document, no authentication, no database, and no persistence. Refreshing the running app is expected to reset state once the implementation milestone is added.
+A realtime collaborative text editor with live cursors, presence, and a shared drawing canvas. Teams create or join a room by 4-digit code and edit a shared rich-text document together, synced over Socket.IO with Yjs CRDTs.
 
-## Current Scope
+![stack](https://img.shields.io/badge/React_19-20232A?style=flat&logo=react&logoColor=61DAFB) ![stack](https://img.shields.io/badge/Node_22-339933?style=flat&logo=nodedotjs&logoColor=white) ![stack](https://img.shields.io/badge/Socket.IO-010101?style=flat&logo=socketdotio&logoColor=white) ![stack](https://img.shields.io/badge/Yjs-0B6E4F?style=flat) ![stack](https://img.shields.io/badge/TypeScript_Strict-3178C6?style=flat&logo=typescript&logoColor=white) ![stack](https://img.shields.io/badge/Tailwind-06B6D4?style=flat&logo=tailwindcss&logoColor=white)
 
-This milestone creates the project architecture and configuration only. It does not implement React components, backend routes, Socket.IO handlers, Yjs state, Tiptap editor setup, or UI behavior.
+## Features
 
-## Folder Structure
+- **Realtime rich-text editing** — Tiptap (ProseMirror) with Yjs CRDT sync, conflict-free concurrent edits
+- **Live cursors** — each collaborator's cursor and selection color-tagged and streamed via Yjs awareness
+- **Presence** — online user list per room with per-user cursor colors
+- **Shared drawing canvas** — brush/eraser strokes relayed live between room members
+- **Rooms** — create or join a 4-digit room; no accounts, no setup
+- **Connection health** — visible connection status indicator and automatic reconnection
+
+## Architecture
+
+The repository is a two-package monorepo: a browser SPA and a Node.js backend.
 
 ```text
-project/
-  client/
-    src/
-      assets/
-      components/
-      contexts/
-      editor/
-      hooks/
-      pages/
-      services/
-      socket/
-      styles/
-      types/
-      utils/
-  server/
-    src/
-      config/
-      controllers/
-      middlewares/
-      services/
-      socket/
-      types/
-      utils/
-  .vscode/
+Browser (React SPA)
+   |
+   | Socket.IO (typed events + custom Yjs transport)
+   v
+Express server (Node 22)
+   |-- /health          operational health endpoint
+   |-- /socket.io       Socket.IO: Yjs updates, awareness, presence, drawing
+   +-- client/dist      static React build (production, single origin)
 ```
 
-## Why Each Folder Exists
+In production the Express server also serves the built React app, so the whole
+system runs from one origin (`http://<host>:4000`). Collaboration state is
+**in-memory only** — no database, no persistence. Restarting the server loses
+all active rooms and documents. See [docs/architecture.md](docs/architecture.md)
+for the full design.
 
-- `client/src/assets`: Static frontend assets such as images, icons, fonts, and editor-adjacent media.
-- `client/src/components`: Reusable presentational React components, including the editor, sidebar, and drawing canvas.
-- `client/src/pages`: Route-level or screen-level composition, including the landing screen and editor screen.
-- `client/src/hooks`: Reusable React hooks for connection state, editor lifecycle, Yjs transport, and browser events.
-- `client/src/contexts`: React context providers for cross-cutting client state such as session identity and collaboration state.
-- `client/src/services`: Client-side service adapters for APIs and infrastructure boundaries.
-- `client/src/editor`: Tiptap-specific configuration, extensions, commands, and editor domain helpers.
-- `client/src/socket`: Socket.IO client setup and typed event adapters.
-- `client/src/styles`: Tailwind entry point and global CSS.
-- `client/src/utils`: Pure utilities with no framework or infrastructure coupling.
-- `client/src/types`: Shared frontend-only TypeScript declarations.
-- `server/src/config`: Environment parsing and server configuration modules.
-- `server/src/socket`: Socket.IO server setup, namespaces, rooms, and typed socket event contracts.
-- `server/src/controllers`: HTTP controller boundaries for health or operational endpoints.
-- `server/src/middlewares`: Express middleware composition such as CORS, security headers, and error handling.
-- `server/src/services`: Backend application services, including collaboration rooms and user registry.
-- `server/src/utils`: Pure backend utilities.
-- `server/src/types`: Backend TypeScript declarations and event contracts.
-- `.vscode`: Workspace recommendations and editor behavior for a consistent team setup.
-## Dependency Decisions
+## Tech Stack
 
-### Client
+| Layer              | Technology                                                                        |
+| ------------------ | --------------------------------------------------------------------------------- |
+| Frontend           | React 19, Vite 6, TypeScript (strict), Tailwind CSS 3                             |
+| Editor             | Tiptap 2 + StarterKit, Collaboration, CollaborationCursor, Placeholder, Underline |
+| Collaboration      | Yjs (CRDT), y-protocols (awareness)                                               |
+| Realtime transport | Socket.IO (client + server), custom transport replacing y-websocket               |
+| Backend            | Node.js 22, Express 5, Helmet, CORS, Zod                                          |
+| Deployment         | AWS EC2 (Ubuntu 24.04), systemd, GitHub Actions                                   |
 
-- `react` and `react-dom`: Production UI foundation for the editor shell.
-- `vite` and `@vitejs/plugin-react`: Fast TypeScript React build pipeline with a simple production bundle.
-- `typescript`: Strict static typing across the frontend.
-- `tailwindcss`, `postcss`, and `autoprefixer`: Utility-first styling with predictable production CSS output.
-- `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/pm`: Rich text editing built on ProseMirror without hand-rolling editor primitives.
-- `@tiptap/extension-collaboration` and `@tiptap/extension-collaboration-cursor`: Tiptap-supported Yjs collaboration and live cursor integration.
-- `@tiptap/extension-placeholder`: Editor placeholder support for the future empty-document state.
-- `yjs` and `y-websocket`: CRDT collaboration primitives and provider package requested for realtime syncing.
-- `socket.io-client`: Presence, join/leave notifications, connection status, and online user metadata.
-- `zod`: Runtime validation for environment and network payload boundaries.
-- `clsx` and `tailwind-merge`: Safe class composition once reusable components are introduced.
-- `eslint`, `typescript-eslint`, React ESLint plugins, and `prettier`: Consistent strict linting and formatting.
+## Repository Layout
 
-### Server
+```text
+ScribbleSync/
+├── client/                  # React SPA (Vite)
+│   ├── src/
+│   │   ├── components/      # presentational components
+│   │   ├── contexts/        # AppContext: session + collaboration state
+│   │   ├── hooks/           # useEditor, useCollaborationTransport, useAppContext
+│   │   ├── pages/           # LandingPage, EditorPage
+│   │   ├── services/        # Socket.IO client setup
+│   │   ├── styles/          # Tailwind entry + global CSS
+│   │   ├── types/           # shared frontend types
+│   │   └── utils/           # pure utilities (cn)
+│   └── ...                  # Vite, Tailwind, TS configs
+├── server/                  # Node.js backend (Express + Socket.IO)
+│   ├── src/
+│   │   ├── config/          # environment, CORS, Socket.IO options
+│   │   ├── controllers/     # health endpoints
+│   │   ├── middlewares/     # logging, 404, error handling
+│   │   ├── services/        # room documents (Yjs), user registry
+│   │   ├── socket/          # collaboration gateway (all socket events)
+│   │   ├── types/           # shared backend types
+│   │   └── utils/           # validation, colors, logger
+│   └── ...                  # TS configs, tests
+├── deploy/                  # systemd unit + EC2 provision script
+├── docs/                    # architecture, onboarding, deployment guides
+└── .github/workflows/       # CI/CD: build + deploy to EC2
+```
 
-- `express`: HTTP server foundation for operational endpoints and Socket.IO attachment.
-- `socket.io`: Realtime presence and collaboration event transport.
-- `yjs`: Shared CRDT primitives for the backend collaboration layer.
-- `cors` and `helmet`: Production baseline for cross-origin control and security headers.
-- `dotenv`: Local environment loading.
-- `zod`: Runtime validation for environment and socket payload boundaries.
-- `tsx`: Development-time TypeScript execution without a manual compile loop.
-- `typescript`, `eslint`, `typescript-eslint`, and `prettier`: Strict build, lint, and formatting pipeline.
+## Prerequisites
 
-## Architecture Decisions
+- **Node.js ≥ 22** (the server requires it; NodeSource 22.x is used on EC2)
+- npm (bundled with Node)
 
-- The project is split into `client` and `server` packages to keep browser and Node concerns independent.
-- Absolute imports are configured in both packages so modules can scale without fragile relative paths.
-- TypeScript is strict, with backend options such as `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess` enabled early.
-- The client entry point is intentionally inert and only verifies the DOM root exists. It is not a UI implementation.
-- The server entry point is intentionally empty. Server runtime behavior belongs to the implementation milestone.
-- Environment variables are documented through `.env.example` files and are not committed as real secrets.
+## Local Development
 
-## Scripts
-
-Run scripts from each package directory.
-
-### Client
+Install and run each package in its own terminal.
 
 ```bash
-cd client
-npm install
+# Terminal 1 — server (API + Socket.IO on :4000)
+cd server
+npm ci
 npm run dev
-npm run build
-npm run lint
-npm run format:check
+
+# Terminal 2 — client (Vite dev server on :5173)
+cd client
+npm ci
+npm run dev
 ```
 
-### Server
+Open `http://localhost:5173`, create a room, then open the same room in a second
+browser (or incognito window) to see realtime sync. In development the client
+calls the server through `VITE_SERVER_URL` (defaults to `http://localhost:4000`).
+
+### Environment variables
+
+Copy `.env.example` to `.env` in each package as needed. All variables have
+working defaults for local development.
+
+Client (`VITE_` prefix, consumed at build time):
+
+| Variable                | Default           | Purpose                                                                             |
+| ----------------------- | ----------------- | ----------------------------------------------------------------------------------- |
+| `VITE_APP_NAME`         | —                 | display name                                                                        |
+| `VITE_CLIENT_PORT`      | `5173`            | Vite dev port                                                                       |
+| `VITE_PREVIEW_PORT`     | `4173`            | Vite preview port                                                                   |
+| `VITE_SERVER_URL`       | _unset_           | Socket.IO server origin. Unset = same origin as the page (`window.location.origin`) |
+| `VITE_SOCKET_NAMESPACE` | `/`               | Socket.IO namespace                                                                 |
+| `VITE_YJS_ROOM_NAME`    | `shared-document` | base name for the Yjs room                                                          |
+
+Server:
+
+| Variable           | Default                 | Purpose                                                       |
+| ------------------ | ----------------------- | ------------------------------------------------------------- |
+| `NODE_ENV`         | `development`           | runtime environment                                           |
+| `PORT`             | `4000`                  | HTTP + Socket.IO port                                         |
+| `CLIENT_ORIGIN`    | `http://localhost:5173` | allowed CORS origin                                           |
+| `SOCKET_NAMESPACE` | `/`                     | Socket.IO namespace                                           |
+| `YJS_ROOM_NAME`    | `shared-document`       | base Yjs room name                                            |
+| `SERVE_CLIENT`     | `true`                  | serve the built React app from `client/dist` (boolean string) |
+
+`SERVE_CLIENT=false` disables static serving and restores the plain text root
+endpoint; if `client/dist` is missing, the server logs a warning and continues
+serving the API without crashing.
+
+## Quality Gates
+
+Run from each package directory (`client/` or `server/`):
+
+```bash
+npm run build        # typecheck + production build (tsc, Vite)
+npm run lint         # ESLint (strict, type-checked rules)
+npm run format:check # Prettier check
+```
+
+Server tests (Node's built-in test runner):
 
 ```bash
 cd server
-npm install
-npm run dev
-npm run build
-npm run lint
-npm run format:check
+npm test
 ```
 
-## Environment Variables
+## Production Deployment
 
-Client variables use Vite's `VITE_` prefix and are declared in `client/src/types/env.d.ts`.
+The application is deployed to a single AWS EC2 instance (Ubuntu 24.04,
+t3.micro) and served over HTTP at `http://<ELASTIC_IP>:4000`. GitHub Actions
+builds both packages and ships them over SSH on every push to `main`.
 
-- `VITE_APP_NAME`: Display name for the application.
-- `VITE_CLIENT_PORT`: Local Vite development port.
-- `VITE_PREVIEW_PORT`: Local Vite preview port.
-- `VITE_SERVER_URL`: Backend HTTP and Socket.IO origin.
-- `VITE_SOCKET_NAMESPACE`: Socket.IO namespace.
-- `VITE_YJS_ROOM_NAME`: Single shared Yjs room name.
+| Artifact        | Location                                 |
+| --------------- | ---------------------------------------- |
+| React build     | `client/dist/`                           |
+| Compiled server | `server/dist/`                           |
+| Runtime deps    | installed via `npm ci --omit=dev` on EC2 |
+| Service         | systemd unit `scribble-sync`             |
 
-Server variables:
+### GitHub Actions secrets
 
-- `NODE_ENV`: Runtime environment.
-- `PORT`: Backend service port.
-- `CLIENT_ORIGIN`: Allowed browser origin for CORS.
-- `SOCKET_NAMESPACE`: Socket.IO namespace.
-- `YJS_ROOM_NAME`: Single shared Yjs room name.
-- `SERVE_CLIENT`: Serve the built React client from `client/dist` (default `true`).
-
-## AWS EC2 Deployment
-
-Production serves the built React client and the Socket.IO backend from one EC2 instance at `http://<ELASTIC_IP>:4000`. Collaboration state is in-memory: restarting the service or the instance loses all active rooms and documents.
-
-### Architecture
-
-- Single Ubuntu 24.04 EC2 instance (`t3.micro`, 8 GB gp3)
-- Node.js 22 runs the compiled server under systemd
-- Express serves `client/dist` (static assets + SPA fallback) and Socket.IO on port 4000
-- GitHub Actions builds both packages and deploys on push to `main`
-
-### Required AWS setup
-
-1. Launch an EC2 instance: Ubuntu 24.04, `t3.micro`, 8 GB gp3, with a key pair you keep locally.
-2. Security group inbound rules:
-   - TCP 22 from your IP only
-   - TCP 4000 from `0.0.0.0/0`
-3. Allocate an Elastic IP and associate it with the instance.
+| Secret            | Value                                                         |
+| ----------------- | ------------------------------------------------------------- |
+| `EC2_HOST`        | Public/Elastic IP of the instance                             |
+| `EC2_USER`        | `ubuntu`                                                      |
+| `EC2_SSH_KEY_B64` | EC2 private key, base64-encoded (`base64 -w0 ~/.ssh/key.pem`) |
 
 ### One-time provisioning
-
-Run from your machine (requires SSH access to the instance):
 
 ```bash
 bash deploy/provision.sh <ELASTIC_IP> [SSH_PRIVATE_KEY_PATH]
 ```
 
-This installs Node.js 22, creates `/opt/scribblesync/{client,server,deployments}`, installs the `scribble-sync` systemd unit, writes the production `.env`, and enables the service.
-
-### GitHub Actions secrets
-
-| Secret | Value |
-| --- | --- |
-| `EC2_HOST` | Public/Elastic IP of the instance |
-| `EC2_USER` | `ubuntu` |
-| `EC2_SSH_KEY` | Private key of the EC2 key pair |
-
-### Deployment flow
-
-Push to `main`. The workflow builds `client/` and `server/`, ships only `client/dist/`, `server/dist/`, `server/package.json`, and `server/package-lock.json` to `/opt/scribblesync/deployments/<sha>/`, runs `npm ci --omit=dev`, swaps the active directories, restarts the service, and rolls back if the service fails to start.
+Installs Node 22, creates `/opt/scribblesync/{client,server,deployments}`,
+installs the systemd unit, writes the production `.env`, and enables the
+service. Full walkthrough: [docs/deployment.md](docs/deployment.md).
 
 ### Verification
 
 ```bash
 curl http://<ELASTIC_IP>:4000/health
 sudo systemctl status scribble-sync
-sudo systemctl is-active scribble-sync
-```
-
-Open `http://<ELASTIC_IP>:4000` in two browsers to verify realtime editing, cursors, and drawing.
-
-### Logs
-
-```bash
 sudo journalctl -u scribble-sync -f
 ```
 
-### systemd troubleshooting
+## Troubleshooting
 
-```bash
-sudo systemctl restart scribble-sync
-sudo journalctl -u scribble-sync -n 50 --no-pager
-```
+- **Blank page / assets failing to load over HTTP** — ensure Helmet does not
+  emit `upgrade-insecure-requests` or HSTS. The current config disables both
+  (see `server/src/app.ts`).
+- **Service crashes on start** — check `sudo journalctl -u scribble-sync -n 50`.
+  Common causes: missing `dist/`, wrong `Node` version, or a `.env` parse error.
+- **No realtime sync** — confirm the browser reaches `:4000` and the socket
+  connects (the footer shows a connection status dot).
 
-### Local production-like test
+## Known Limitations
 
-```bash
-cd client && npm ci && npm run build
-cd ../server && npm ci && npm run build
-cd server && SERVE_CLIENT=true PORT=4000 node dist/index.js
-```
+- **No persistence** — all rooms and documents live in memory; any server or
+  instance restart wipes them. Users must create/join a new room.
+- **HTTP only** — no TLS, no custom domain at this stage (upgrade path: ACM
+  certificate + reverse proxy or ALB).
+- **Single instance** — Yjs state is not shared across processes; horizontal
+  scaling would require an external state layer.
+- **Drawing is not CRDT-synced** — strokes are relayed as events; late joiners
+  see an empty canvas.
 
-Open `http://localhost:4000`; `/health` remains a JSON endpoint and `/api/*` returns JSON 404s.
+## Documentation
 
-### Limitation
-
-Restarting `scribble-sync` or the instance loses all in-memory rooms and documents; users must create or join a new room. No persistence is planned in the current scope.
-
-## Verification Checklist
-
-- [x] Folder structure
-- [x] Configurations
-- [x] Build scripts
-- [x] ESLint
-- [x] Prettier
-- [x] Tailwind
-- [x] Vite
-- [x] TypeScript
-- [x] Ready for development
-
-
+- [docs/getting-started.md](docs/getting-started.md) — onboarding for new developers
+- [docs/architecture.md](docs/architecture.md) — how the system works internally
+- [docs/deployment.md](docs/deployment.md) — EC2 deployment and operations guide
