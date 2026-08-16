@@ -5,11 +5,11 @@ import type { AppSocket } from '@/types/socket-events';
 const getServerUrl = (): string => {
   const serverUrl = import.meta.env.VITE_SERVER_URL;
 
-  if (typeof serverUrl !== 'string' || serverUrl.length === 0) {
-    throw new Error('VITE_SERVER_URL must be configured.');
+  if (typeof serverUrl === 'string' && serverUrl.length > 0) {
+    return serverUrl;
   }
 
-  return serverUrl;
+  return window.location.origin;
 };
 
 const getSocketNamespace = (): string => import.meta.env.VITE_SOCKET_NAMESPACE || '/';

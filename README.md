@@ -137,6 +137,85 @@ Server variables:
 - `CLIENT_ORIGIN`: Allowed browser origin for CORS.
 - `SOCKET_NAMESPACE`: Socket.IO namespace.
 - `YJS_ROOM_NAME`: Single shared Yjs room name.
+- `SERVE_CLIENT`: Serve the built React client from `client/dist` (default `true`).
+
+## AWS EC2 Deployment
+
+Production serves the built React client and the Socket.IO backend from one EC2 instance at `http://<ELASTIC_IP>:4000`. Collaboration state is in-memory: restarting the service or the instance loses all active rooms and documents.
+
+### Architecture
+
+- Single Ubuntu 24.04 EC2 instance (`t3.micro`, 8 GB gp3)
+- Node.js 22 runs the compiled server under systemd
+- Express serves `client/dist` (static assets + SPA fallback) and Socket.IO on port 4000
+- GitHub Actions builds both packages and deploys on push to `main`
+
+### Required AWS setup
+
+1. Launch an EC2 instance: Ubuntu 24.04, `t3.micro`, 8 GB gp3, with a key pair you keep locally.
+2. Security group inbound rules:
+   - TCP 22 from your IP only
+   - TCP 4000 from `0.0.0.0/0`
+3. Allocate an Elastic IP and associate it with the instance.
+
+### One-time provisioning
+
+Run from your machine (requires SSH access to the instance):
+
+```bash
+bash deploy/provision.sh <ELASTIC_IP> [SSH_PRIVATE_KEY_PATH]
+```
+
+This installs Node.js 22, creates `/opt/scribblesync/{client,server,deployments}`, installs the `scribble-sync` systemd unit, writes the production `.env`, and enables the service.
+
+### GitHub Actions secrets
+
+| Secret | Value |
+| --- | --- |
+| `EC2_HOST` | Public/Elastic IP of the instance |
+| `EC2_USER` | `ubuntu` |
+| `EC2_SSH_KEY` | Private key of the EC2 key pair |
+
+### Deployment flow
+
+Push to `main`. The workflow builds `client/` and `server/`, ships only `client/dist/`, `server/dist/`, `server/package.json`, and `server/package-lock.json` to `/opt/scribblesync/deployments/<sha>/`, runs `npm ci --omit=dev`, swaps the active directories, restarts the service, and rolls back if the service fails to start.
+
+### Verification
+
+```bash
+curl http://<ELASTIC_IP>:4000/health
+sudo systemctl status scribble-sync
+sudo systemctl is-active scribble-sync
+```
+
+Open `http://<ELASTIC_IP>:4000` in two browsers to verify realtime editing, cursors, and drawing.
+
+### Logs
+
+```bash
+sudo journalctl -u scribble-sync -f
+```
+
+### systemd troubleshooting
+
+```bash
+sudo systemctl restart scribble-sync
+sudo journalctl -u scribble-sync -n 50 --no-pager
+```
+
+### Local production-like test
+
+```bash
+cd client && npm ci && npm run build
+cd ../server && npm ci && npm run build
+cd server && SERVE_CLIENT=true PORT=4000 node dist/index.js
+```
+
+Open `http://localhost:4000`; `/health` remains a JSON endpoint and `/api/*` returns JSON 404s.
+
+### Limitation
+
+Restarting `scribble-sync` or the instance loses all in-memory rooms and documents; users must create or join a new room. No persistence is planned in the current scope.
 
 ## Verification Checklist
 
