@@ -1,0 +1,153 @@
+# Realtime Collaborative Editor
+
+Architecture-only milestone for a production-quality realtime collaborative text editor. This repository is intentionally scoped to one shared document, no authentication, no database, and no persistence. Refreshing the running app is expected to reset state once the implementation milestone is added.
+
+## Current Scope
+
+This milestone creates the project architecture and configuration only. It does not implement React components, backend routes, Socket.IO handlers, Yjs state, Tiptap editor setup, or UI behavior.
+
+## Folder Structure
+
+```text
+project/
+  client/
+    src/
+      assets/
+      components/
+      contexts/
+      editor/
+      hooks/
+      pages/
+      services/
+      socket/
+      styles/
+      types/
+      utils/
+  server/
+    src/
+      config/
+      controllers/
+      middlewares/
+      services/
+      socket/
+      types/
+      utils/
+  .vscode/
+```
+
+## Why Each Folder Exists
+
+- `client/src/assets`: Static frontend assets such as images, icons, fonts, and editor-adjacent media.
+- `client/src/components`: Reusable presentational React components, including the editor, sidebar, and drawing canvas.
+- `client/src/pages`: Route-level or screen-level composition, including the landing screen and editor screen.
+- `client/src/hooks`: Reusable React hooks for connection state, editor lifecycle, Yjs transport, and browser events.
+- `client/src/contexts`: React context providers for cross-cutting client state such as session identity and collaboration state.
+- `client/src/services`: Client-side service adapters for APIs and infrastructure boundaries.
+- `client/src/editor`: Tiptap-specific configuration, extensions, commands, and editor domain helpers.
+- `client/src/socket`: Socket.IO client setup and typed event adapters.
+- `client/src/styles`: Tailwind entry point and global CSS.
+- `client/src/utils`: Pure utilities with no framework or infrastructure coupling.
+- `client/src/types`: Shared frontend-only TypeScript declarations.
+- `server/src/config`: Environment parsing and server configuration modules.
+- `server/src/socket`: Socket.IO server setup, namespaces, rooms, and typed socket event contracts.
+- `server/src/controllers`: HTTP controller boundaries for health or operational endpoints.
+- `server/src/middlewares`: Express middleware composition such as CORS, security headers, and error handling.
+- `server/src/services`: Backend application services, including collaboration rooms and user registry.
+- `server/src/utils`: Pure backend utilities.
+- `server/src/types`: Backend TypeScript declarations and event contracts.
+- `.vscode`: Workspace recommendations and editor behavior for a consistent team setup.
+## Dependency Decisions
+
+### Client
+
+- `react` and `react-dom`: Production UI foundation for the editor shell.
+- `vite` and `@vitejs/plugin-react`: Fast TypeScript React build pipeline with a simple production bundle.
+- `typescript`: Strict static typing across the frontend.
+- `tailwindcss`, `postcss`, and `autoprefixer`: Utility-first styling with predictable production CSS output.
+- `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/pm`: Rich text editing built on ProseMirror without hand-rolling editor primitives.
+- `@tiptap/extension-collaboration` and `@tiptap/extension-collaboration-cursor`: Tiptap-supported Yjs collaboration and live cursor integration.
+- `@tiptap/extension-placeholder`: Editor placeholder support for the future empty-document state.
+- `yjs` and `y-websocket`: CRDT collaboration primitives and provider package requested for realtime syncing.
+- `socket.io-client`: Presence, join/leave notifications, connection status, and online user metadata.
+- `zod`: Runtime validation for environment and network payload boundaries.
+- `clsx` and `tailwind-merge`: Safe class composition once reusable components are introduced.
+- `eslint`, `typescript-eslint`, React ESLint plugins, and `prettier`: Consistent strict linting and formatting.
+
+### Server
+
+- `express`: HTTP server foundation for operational endpoints and Socket.IO attachment.
+- `socket.io`: Realtime presence and collaboration event transport.
+- `yjs`: Shared CRDT primitives for the backend collaboration layer.
+- `cors` and `helmet`: Production baseline for cross-origin control and security headers.
+- `dotenv`: Local environment loading.
+- `zod`: Runtime validation for environment and socket payload boundaries.
+- `tsx`: Development-time TypeScript execution without a manual compile loop.
+- `typescript`, `eslint`, `typescript-eslint`, and `prettier`: Strict build, lint, and formatting pipeline.
+
+## Architecture Decisions
+
+- The project is split into `client` and `server` packages to keep browser and Node concerns independent.
+- Absolute imports are configured in both packages so modules can scale without fragile relative paths.
+- TypeScript is strict, with backend options such as `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess` enabled early.
+- The client entry point is intentionally inert and only verifies the DOM root exists. It is not a UI implementation.
+- The server entry point is intentionally empty. Server runtime behavior belongs to the implementation milestone.
+- Environment variables are documented through `.env.example` files and are not committed as real secrets.
+
+## Scripts
+
+Run scripts from each package directory.
+
+### Client
+
+```bash
+cd client
+npm install
+npm run dev
+npm run build
+npm run lint
+npm run format:check
+```
+
+### Server
+
+```bash
+cd server
+npm install
+npm run dev
+npm run build
+npm run lint
+npm run format:check
+```
+
+## Environment Variables
+
+Client variables use Vite's `VITE_` prefix and are declared in `client/src/types/env.d.ts`.
+
+- `VITE_APP_NAME`: Display name for the application.
+- `VITE_CLIENT_PORT`: Local Vite development port.
+- `VITE_PREVIEW_PORT`: Local Vite preview port.
+- `VITE_SERVER_URL`: Backend HTTP and Socket.IO origin.
+- `VITE_SOCKET_NAMESPACE`: Socket.IO namespace.
+- `VITE_YJS_ROOM_NAME`: Single shared Yjs room name.
+
+Server variables:
+
+- `NODE_ENV`: Runtime environment.
+- `PORT`: Backend service port.
+- `CLIENT_ORIGIN`: Allowed browser origin for CORS.
+- `SOCKET_NAMESPACE`: Socket.IO namespace.
+- `YJS_ROOM_NAME`: Single shared Yjs room name.
+
+## Verification Checklist
+
+- [x] Folder structure
+- [x] Configurations
+- [x] Build scripts
+- [x] ESLint
+- [x] Prettier
+- [x] Tailwind
+- [x] Vite
+- [x] TypeScript
+- [x] Ready for development
+
+
