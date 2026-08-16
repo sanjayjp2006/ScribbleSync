@@ -19,7 +19,16 @@ export const createApp = (environmentConfig: Environment): express.Express => {
   const app = express();
 
   app.disable('x-powered-by');
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          'upgrade-insecure-requests': null
+        }
+      },
+      strictTransportSecurity: false
+    })
+  );
   app.use(cors(createCorsOptions(environmentConfig)));
   app.use(express.json({ limit: '32kb' }));
   app.use(requestLogger);
