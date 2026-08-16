@@ -1,0 +1,19 @@
+[Unit]
+Description=ScribbleSync Realtime Collaborative Editor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/scribblesync/server
+EnvironmentFile=/opt/scribblesync/server/.env
+ExecStart=/usr/bin/node dist/index.js
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -10,7 +10,8 @@ const testEnvironment: Environment = {
   PORT: 0,
   CLIENT_ORIGIN: 'http://localhost:5173',
   SOCKET_NAMESPACE: '/',
-  YJS_ROOM_NAME: 'shared-document'
+  YJS_ROOM_NAME: 'shared-document',
+  SERVE_CLIENT: false
 };
 
 void describe('createApp', () => {

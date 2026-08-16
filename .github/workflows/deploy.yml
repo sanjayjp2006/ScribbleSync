@@ -1,0 +1,131 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build client and server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build client
+        working-directory: client
+        run: npm run build
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Build server
+        working-directory: server
+        run: npm run build
+
+      - name: Package deployment bundle
+        run: |
+          mkdir -p deploy-bundle/client deploy-bundle/server
+          cp -r client/dist deploy-bundle/client/
+          cp -r server/dist deploy-bundle/server/
+          cp server/package.json server/package-lock.json deploy-bundle/server/
+          tar -czf deploy-bundle.tar.gz -C deploy-bundle .
+
+      - name: Upload deployment bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-bundle
+          path: deploy-bundle.tar.gz
+          retention-days: 7
+
+  deploy:
+    name: Deploy to EC2
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download deployment bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: deploy-bundle
+
+      - name: Configure SSH
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Upload bundle to EC2
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          scp -i ~/.ssh/deploy_key deploy-bundle.tar.gz "$EC2_USER@$EC2_HOST:/tmp/deploy-bundle.tar.gz"
+
+      - name: Deploy and restart service
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" "STAGE=/opt/scribblesync/deployments/$GITHUB_SHA bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          mkdir -p "$STAGE"
+          tar -xzf /tmp/deploy-bundle.tar.gz -C "$STAGE"
+
+          cd "$STAGE/server"
+          npm ci --omit=dev
+
+          if [ -f /opt/scribblesync/server/.env ]; then
+            cp /opt/scribblesync/server/.env "$STAGE/server/.env"
+          fi
+
+          sudo rm -rf /opt/scribblesync/client.old /opt/scribblesync/server.old
+          if [ -d /opt/scribblesync/client ]; then
+            sudo mv /opt/scribblesync/client /opt/scribblesync/client.old
+          fi
+          if [ -d /opt/scribblesync/server ]; then
+            sudo mv /opt/scribblesync/server /opt/scribblesync/server.old
+          fi
+          sudo mv "$STAGE/client" /opt/scribblesync/client
+          sudo mv "$STAGE/server" /opt/scribblesync/server
+
+          sudo systemctl restart scribble-sync
+          sleep 3
+
+          if [ "$(sudo systemctl is-active scribble-sync)" != "active" ]; then
+            sudo rm -rf /opt/scribblesync/client /opt/scribblesync/server
+            if [ -d /opt/scribblesync/client.old ]; then
+              sudo mv /opt/scribblesync/client.old /opt/scribblesync/client
+            fi
+            if [ -d /opt/scribblesync/server.old ]; then
+              sudo mv /opt/scribblesync/server.old /opt/scribblesync/server
+            fi
+            sudo systemctl restart scribble-sync
+            echo "::error::scribble-sync failed to start; deployment rolled back"
+            exit 1
+          fi
+
+          sudo rm -rf /opt/scribblesync/client.old /opt/scribblesync/server.old "$STAGE"
+          rm -f /tmp/deploy-bundle.tar.gz
+          echo "Deployment successful for $GITHUB_SHA"
+REMOTE
