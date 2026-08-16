@@ -128,4 +128,4 @@ jobs:
           sudo rm -rf /opt/scribblesync/client.old /opt/scribblesync/server.old "$STAGE"
           rm -f /tmp/deploy-bundle.tar.gz
           echo "Deployment successful for $GITHUB_SHA"
-REMOTE
+          REMOTE
